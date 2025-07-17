@@ -18,36 +18,60 @@
 ### File Hierarchy
 ```
 magicnote/magicnote/
-├── magicnoteApp.swift      # App entry point
-├── Note.swift              # Core data model
-├── NoteStore.swift         # Data management + auto-tagging
-├── ContentView.swift       # Main list interface
-└── EntryView.swift         # Note creation/editing
+├── magicnoteApp.swift          # App entry point
+├── Document.swift              # Core document model + FileDocument
+├── DocumentBlock.swift         # Block-based content model
+├── DocumentStore.swift         # File-based document management
+├── ContentView.swift           # Main document list interface
+├── DocumentEditorView.swift    # Block-based document editing
+└── Assets.xcassets/           # App icons and colors
 ```
 
 ### Key Responsibilities
-- **Note.swift**: Data structure, computed properties, serialization
-- **NoteStore.swift**: CRUD operations, persistence, auto-tagging
-- **ContentView.swift**: List UI, navigation, empty states
-- **EntryView.swift**: Note editing, input validation, save logic
+- **Document.swift**: FileDocument protocol, JSON serialization, document metadata
+- **DocumentBlock.swift**: Block types, content structure, block metadata
+- **DocumentStore.swift**: File I/O, CRUD operations, auto-tagging, search
+- **ContentView.swift**: Document list UI, navigation, metadata display
+- **DocumentEditorView.swift**: Block-based editing, cursor management, focus handling
 
 ## Common Development Tasks
 
-### Adding New Note Properties
+### Adding New Block Types
 
-1. **Update the Note model**:
+1. **Update the BlockType enum**:
 ```swift
-// In Note.swift
-struct Note: Identifiable, Codable {
-    // ... existing properties ...
-    var newProperty: String = ""
+// In DocumentBlock.swift
+enum BlockType: String, Codable, CaseIterable {
+    case heading = "heading"
+    case paragraph = "paragraph"
+    case newBlockType = "new_block_type"  // Add new type
 }
 ```
 
 2. **Update the UI**:
 ```swift
-// In EntryView.swift - add input field
-// In ContentView.swift - display in list/metadata
+// In DocumentEditorView.swift - add handling for new block type
+// In BlockEditorView.swift - add specific UI for new block type
+```
+
+### Adding New Document Properties
+
+1. **Update the Document model**:
+```swift
+// In Document.swift
+struct Document: FileDocument {
+    // ... existing properties ...
+    var newProperty: String = ""
+}
+```
+
+2. **Update JSON serialization**:
+```swift
+// In Document.swift - DocumentData struct
+private struct DocumentData: Codable {
+    // ... existing properties ...
+    let newProperty: String
+}
 ```
 
 3. **Handle migration** (if needed):

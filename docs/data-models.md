@@ -1,46 +1,104 @@
 # Data Models
 
-## Note Model
+## Document Model
 
-**File**: `Note.swift`
+**File**: `Document.swift`
 
-The `Note` struct is the core data model representing a single note in the application.
+The `Document` struct is the core data model representing a block-based document in the application.
 
 ### Structure
 
 ```swift
-struct Note: Identifiable, Codable {
-    let id = UUID()
-    var title: String
-    var content: String
-    var tags: [String]
+struct Document: FileDocument {
+    var id: UUID
+    var version: UUID
     var createdAt: Date
     var lastEditedAt: Date
+    var author: String
+    var active: Bool
+    var title: String
+    var blocks: [DocumentBlock]
+    var cursorPosition: CursorPosition
+    var tags: [String]
 }
 ```
 
 ### Protocols Implemented
 
-#### 1. Identifiable
+#### 1. FileDocument
+- **Purpose**: Enables document-based app functionality with file I/O
+- **Implementation**: Custom JSON serialization with ISO8601 dates
+- **Benefit**: Individual file storage with metadata preservation
+
+#### 2. Identifiable (inherited)
 - **Purpose**: Enables use in SwiftUI ForEach loops
 - **Implementation**: Uses `UUID()` for unique identification
 - **Benefit**: Automatic list item tracking and animations
-
-#### 2. Codable
-- **Purpose**: Enables JSON serialization/deserialization
-- **Implementation**: Automatic synthesis by Swift compiler
-- **Benefit**: Easy persistence to UserDefaults
 
 ### Core Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `id` | `UUID` | Unique identifier (auto-generated) |
-| `title` | `String` | Note title (optional) |
-| `content` | `String` | Main note content |
-| `tags` | `[String]` | Auto-generated tags array |
+| `id` | `UUID` | Unique document identifier |
+| `version` | `UUID` | Version identifier (changes on edit) |
 | `createdAt` | `Date` | Creation timestamp |
 | `lastEditedAt` | `Date` | Last modification timestamp |
+| `author` | `String` | Document author |
+| `active` | `Bool` | Soft delete flag |
+| `title` | `String` | Document title (generated from content) |
+| `blocks` | `[DocumentBlock]` | Array of content blocks |
+| `cursorPosition` | `CursorPosition` | Current cursor location |
+| `tags` | `[String]` | Auto-generated tags array |
+
+## DocumentBlock Model
+
+**File**: `DocumentBlock.swift`
+
+The `DocumentBlock` struct represents individual content blocks within a document.
+
+### Structure
+
+```swift
+struct DocumentBlock: Identifiable, Codable {
+    let id: UUID
+    var blockType: BlockType
+    var content: String
+    var metadata: BlockMetadata
+}
+```
+
+### Block Types
+
+```swift
+enum BlockType: String, Codable, CaseIterable {
+    case heading = "heading"
+    case paragraph = "paragraph"
+}
+```
+
+### Block Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | `UUID` | Unique block identifier |
+| `blockType` | `BlockType` | Type of block (heading/paragraph) |
+| `content` | `String` | Block text content |
+| `metadata` | `BlockMetadata` | Block-specific metadata |
+
+## CursorPosition Model
+
+**File**: `Document.swift`
+
+Tracks cursor position for seamless editing experience.
+
+### Structure
+
+```swift
+struct CursorPosition: Codable {
+    var blockId: UUID
+    var position: Int
+}
+```
 
 ### Computed Properties
 

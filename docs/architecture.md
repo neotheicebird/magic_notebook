@@ -1,8 +1,8 @@
 # Architecture Overview
 
-## Design Pattern: MVVM with SwiftUI
+## Design Pattern: MVVM with SwiftUI + Block-Based Document System
 
-The Magic Notes app follows the **Model-View-ViewModel (MVVM)** architectural pattern, which provides clean separation of concerns and excellent testability.
+The Magic Notes app follows the **Model-View-ViewModel (MVVM)** architectural pattern with a sophisticated block-based document system, providing clean separation of concerns and excellent scalability.
 
 ### Architecture Components
 
@@ -10,9 +10,10 @@ The Magic Notes app follows the **Model-View-ViewModel (MVVM)** architectural pa
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │     Views       │    │   ViewModels    │    │     Models      │
 │                 │    │                 │    │                 │
-│  ContentView    │◄──►│   NoteStore     │◄──►│     Note        │
-│  EntryView      │    │                 │    │                 │
-│  NoteRowView    │    │  (ObservableObject) │    │  (Codable)      │
+│  ContentView    │◄──►│ DocumentStore   │◄──►│   Document      │
+│DocumentEditorView│    │                 │    │ DocumentBlock   │
+│DocumentRowView  │    │ (ObservableObject) │    │ (FileDocument)  │
+│BlockEditorView  │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -36,6 +37,28 @@ struct MagicNotesApp: App {
 - Simple WindowGroup with ContentView as root
 - Cross-platform consideration with macOS window styling
 
+## Block-Based Document System
+
+### Core Architecture Principles
+
+1. **Modular Content**: Documents are composed of individual blocks (heading, paragraph)
+2. **FileDocument Protocol**: Each document is a JSON file with comprehensive metadata
+3. **Cursor Tracking**: Precise cursor position management for seamless editing
+4. **Version Control**: UUID-based versioning for document evolution tracking
+
+### Document Structure
+
+```
+Document
+├── Metadata (id, version, timestamps, author, active state)
+├── Blocks Array
+│   ├── DocumentBlock (heading)
+│   ├── DocumentBlock (paragraph)
+│   └── DocumentBlock (paragraph)
+├── Cursor Position (blockId, position)
+└── Auto-generated Tags
+```
+
 ## State Management
 
 ### ObservableObject Pattern
@@ -43,9 +66,9 @@ struct MagicNotesApp: App {
 The app uses SwiftUI's reactive state management through `@StateObject` and `@Published` properties:
 
 ```swift
-class NoteStore: ObservableObject {
-    @Published var notes: [Note] = []
-    // ... other properties
+class DocumentStore: ObservableObject {
+    @Published var documents: [Document] = []
+    // ... file management properties
 }
 ```
 

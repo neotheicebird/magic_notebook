@@ -2,7 +2,7 @@
 
 ## Overview
 
-Magic Notes is a SwiftUI-based note-taking application for iOS that features intelligent auto-tagging capabilities. The app provides a clean, intuitive interface for creating, editing, and organizing notes with metadata-rich features.
+Magic Notes is a sophisticated SwiftUI-based block-based document editor for iOS that features advanced functionality including undo/redo, auto-save, accessibility support, and comprehensive analytics. The app provides a professional interface for creating, editing, and organizing structured documents with rich metadata features.
 
 ## Key Features
 
