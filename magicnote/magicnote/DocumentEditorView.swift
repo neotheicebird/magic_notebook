@@ -131,6 +131,7 @@ class DocumentUndoManager: ObservableObject {
     }
 }
 
+// MARK: - Document Editor View
 struct DocumentEditorView: View {
     @ObservedObject var documentStore: DocumentStore
     @State private var document: Document
@@ -152,6 +153,9 @@ struct DocumentEditorView: View {
     // Performance optimization - debounced auto-save
     private let autoSaveInterval: TimeInterval = 2.0
     
+    // UI state for floating toolbar
+    @State private var showingFloatingToolbar = false
+    
     init(document: Document? = nil, documentStore: DocumentStore) {
         self.documentStore = documentStore
         if let existingDoc = document {
@@ -165,148 +169,150 @@ struct DocumentEditorView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                // Auto-save indicator
-                if hasUnsavedChanges {
-                    HStack {
-                        Image(systemName: "circle.fill")
-                            .foregroundColor(.orange)
-                            .font(.caption2)
-                        Text("Auto-saving...")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 4)
-                }
-                
-                // Document Editor Content
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(Array(document.blocks.enumerated()), id: \.element.id) { index, block in
-                            BlockEditorView(
-                                block: block,
-                                isFocused: focusedBlock == block.id,
-                                onContentChanged: { newContent in
-                                    updateBlockContentWithUndo(block.id, content: newContent)
-                                },
-                                onFocusChanged: { isFocused in
-                                    if isFocused {
-                                        focusedBlock = block.id
-                                        document.updateCursorPosition(blockId: block.id, position: 0)
+            ZStack {
+                VStack(spacing: 0) {
+                    // Seamless Document Editor Content
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(document.blocks.enumerated()), id: \.element.id) { index, block in
+                                SeamlessBlockEditorView(
+                                    block: block,
+                                    isFocused: focusedBlock == block.id,
+                                    isFirstBlock: index == 0,
+                                    onContentChanged: { newContent in
+                                        updateBlockContentWithUndo(block.id, content: newContent)
+                                    },
+                                    onFocusChanged: { isFocused in
+                                        if isFocused {
+                                            focusedBlock = block.id
+                                            document.updateCursorPosition(blockId: block.id, position: 0)
+                                        }
+                                    },
+                                    onReturnPressed: {
+                                        handleReturnFromBlock(block.id)
+                                    },
+                                    onDeletePressed: {
+                                        handleDeleteFromBlock(block.id)
+                                    },
+                                    onDoubleNewline: {
+                                        addNewBlockWithUndo(after: block.id)
+                                    },
+                                    onBackspaceAtStart: {
+                                        mergeWithPreviousBlock(block.id)
                                     }
-                                },
-                                onReturnPressed: {
-                                    addNewBlockWithUndo(after: block.id)
-                                },
-                                onDeletePressed: {
-                                    deleteBlockWithUndo(block.id)
-                                },
-                                onBlockTypeChanged: { newType in
-                                    changeBlockTypeWithUndo(block.id, to: newType)
-                                }
-                            )
-                            .accessibilityElement(children: .contain)
-                            .accessibilityLabel("\(block.blockType.displayName) block \(index + 1) of \(document.blocks.count)")
-                            .accessibilityHint(block.isEmpty ? "Empty block, double tap to edit" : "Contains: \(block.content)")
-                        }
-                        
-                        // Add new block button
-                        Button(action: {
-                            addNewBlockWithUndo(after: document.blocks.last?.id ?? UUID())
-                        }) {
-                            HStack {
-                                Image(systemName: "plus.circle")
-                                    .foregroundColor(.blue)
-                                Text("Add Block")
-                                    .foregroundColor(.blue)
-                                Spacer()
+                                )
+                                .accessibilityElement(children: .contain)
+                                .accessibilityLabel("\(block.blockType.displayName) \(index + 1) of \(document.blocks.count)")
+                                .accessibilityHint(block.isEmpty ? "Empty, tap to edit" : "Contains: \(block.content)")
                             }
-                            .padding()
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
                         }
-                        .accessibilityLabel("Add new block")
-                        .accessibilityHint("Adds a new paragraph block at the end of the document")
+                        .padding(.horizontal)
+                        .padding(.bottom, 100) // Space for floating toolbar
                     }
-                    .padding()
                 }
                 
-                // Tag generation indicator
-                if isGeneratingTags {
+                // Floating + Button
+                VStack {
+                    Spacer()
                     HStack {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text("Generating smart tags...")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button(action: {
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingFloatingToolbar.toggle()
+                            }
+                        }) {
+                            Image(systemName: showingFloatingToolbar ? "xmark" : "plus")
+                                .font(.title)
+                                .fontWeight(.bold)
+                                .foregroundColor(.purple)
+                        }
+                        .rotationEffect(.degrees(showingFloatingToolbar ? 45 : 0))
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showingFloatingToolbar)
                     }
-                    .padding()
+                    .padding(.trailing, 20)
+                    .padding(.bottom, showingFloatingToolbar ? 80 : 20)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showingFloatingToolbar)
+                }
+                
+                // Floating Toolbar
+                if showingFloatingToolbar {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 20) {
+                            Button(action: {
+                                _ = undoManager.undo(on: &document)
+                                markAsChanged()
+                            }) {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.purple)
+                                    .clipShape(Circle())
+                            }
+                            .disabled(!undoManager.canUndo)
+                            .accessibilityLabel("Undo")
+                            
+                            Button(action: {
+                                _ = undoManager.redo(on: &document)
+                                markAsChanged()
+                            }) {
+                                Image(systemName: "arrow.uturn.forward")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.purple)
+                                    .clipShape(Circle())
+                            }
+                            .disabled(!undoManager.canRedo)
+                            .accessibilityLabel("Redo")
+                            
+                            Button(action: {
+                                showingShareSheet = true
+                            }) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.purple)
+                                    .clipShape(Circle())
+                            }
+                            .disabled(document.isEmpty)
+                            .accessibilityLabel("Share document")
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
             }
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("< Back") {
+                    Button(action: {
                         saveDocument()
                         dismiss()
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.title2)
+                            .foregroundColor(.purple)
                     }
-                }
-                
-                ToolbarItem(placement: .principal) {
-                    HStack {
-                        Button(action: {
-                            if undoManager.undo(on: &document) {
-                                markAsChanged()
-                            }
-                        }) {
-                            Image(systemName: "arrow.uturn.backward")
-                                .font(.title3)
-                        }
-                        .disabled(!undoManager.canUndo)
-                        .accessibilityLabel("Undo")
-                        .accessibilityHint("Undo the last action")
-                        .keyboardShortcut("z", modifiers: .command)
-                        
-                        Button(action: {
-                            if undoManager.redo(on: &document) {
-                                markAsChanged()
-                            }
-                        }) {
-                            Image(systemName: "arrow.uturn.forward")
-                                .font(.title3)
-                        }
-                        .disabled(!undoManager.canRedo)
-                        .accessibilityLabel("Redo")
-                        .accessibilityHint("Redo the last undone action")
-                        .keyboardShortcut("z", modifiers: [.command, .shift])
-                    }
+                    .accessibilityLabel("Back to documents")
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack {
-                        Button(action: {
-                            showingShareSheet = true
-                        }) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.title3)
-                        }
-                        .disabled(document.isEmpty)
-                        .accessibilityLabel("Share document")
-                        .accessibilityHint("Share or export this document")
-                        
-                        Button("Done") {
-                            saveDocument()
-                            dismiss()
-                        }
-                        .fontWeight(.semibold)
-                        .disabled(document.isEmpty)
-                        .accessibilityLabel("Done editing")
-                        .accessibilityHint("Save document and return to document list")
-                        .keyboardShortcut("s", modifiers: .command)
+                    Button(action: {
+                        saveDocument()
+                        dismiss()
+                    }) {
+                        Text("Done")
+                            .font(.headline)
+                            .foregroundColor(.purple)
                     }
+                    .disabled(document.isEmpty)
+                    .accessibilityLabel("Done editing")
+                    .keyboardShortcut("s", modifiers: .command)
                 }
             }
         }
@@ -498,9 +504,10 @@ struct DocumentEditorView: View {
     private func setupInitialFocus() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if isNewDocument {
-                // Focus on first empty paragraph block (skip heading)
-                if document.blocks.count > 1 {
-                    focusedBlock = document.blocks[1].id
+                // Focus on first block (heading) for new documents
+                if let firstBlock = document.blocks.first {
+                    focusedBlock = firstBlock.id
+                    document.updateCursorPosition(blockId: firstBlock.id, position: 0)
                 }
             } else {
                 // Focus on last block for existing documents
@@ -541,110 +548,175 @@ struct DocumentEditorView: View {
             }
         }
     }
+    
+    // MARK: - Block Management
+    
+    private func mergeWithPreviousBlock(_ blockId: UUID) {
+        guard let index = document.blocks.firstIndex(where: { $0.id == blockId }) else { return }
+        guard index > 0 else { return }
+        
+        let currentBlock = document.blocks[index]
+        let previousBlock = document.blocks[index - 1]
+        let mergedContent = previousBlock.content + currentBlock.content
+        
+        // Update the previous block with merged content
+        let updateCommand = ContentChangeCommand(
+            blockId: previousBlock.id,
+            oldContent: previousBlock.content,
+            newContent: mergedContent
+        )
+        
+        // Delete the current block
+        let deleteCommand = DeleteBlockCommand(
+            deletedBlock: currentBlock,
+            originalIndex: index
+        )
+        
+        undoManager.executeCommand(updateCommand, on: &document)
+        undoManager.executeCommand(deleteCommand, on: &document)
+        
+        blockContentCache.removeValue(forKey: currentBlock.id)
+        blockContentCache[previousBlock.id] = mergedContent
+        markAsChanged()
+        
+        // Focus on the merged block
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            focusedBlock = previousBlock.id
+        }
+    }
+    
+    // MARK: - Block Management
+    
+    private func handleReturnFromBlock(_ blockId: UUID) {
+        guard let index = document.blocks.firstIndex(where: { $0.id == blockId }) else { return }
+        let currentBlock = document.blocks[index]
+        
+        if currentBlock.blockType == .heading {
+            // If this is the first block (heading) and there's a second block, focus on it
+            if index == 0 && document.blocks.count > 1 {
+                focusedBlock = document.blocks[1].id
+            } else {
+                // Create a new paragraph block after the heading
+                addNewBlockWithUndo(after: blockId)
+            }
+        } else {
+            // For paragraph blocks, create a new block after
+            addNewBlockWithUndo(after: blockId)
+        }
+    }
+    
+    private func handleDeleteFromBlock(_ blockId: UUID) {
+        guard let index = document.blocks.firstIndex(where: { $0.id == blockId }) else { return }
+        let currentBlock = document.blocks[index]
+        
+        // Only handle delete for empty paragraph blocks
+        if currentBlock.blockType == .paragraph && currentBlock.isEmpty && index > 0 {
+            let previousBlock = document.blocks[index - 1]
+            
+            // Delete the current empty block
+            let deleteCommand = DeleteBlockCommand(
+                deletedBlock: currentBlock,
+                originalIndex: index
+            )
+            
+            undoManager.executeCommand(deleteCommand, on: &document)
+            blockContentCache.removeValue(forKey: currentBlock.id)
+            markAsChanged()
+            
+            // Focus on the previous block at the end
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                focusedBlock = previousBlock.id
+                document.updateCursorPosition(blockId: previousBlock.id, position: previousBlock.content.count)
+            }
+        }
+    }
 }
 
-// MARK: - Block Editor View
-struct BlockEditorView: View {
+// MARK: - Seamless Block Editor View
+struct SeamlessBlockEditorView: View {
     let block: DocumentBlock
     let isFocused: Bool
+    let isFirstBlock: Bool
     let onContentChanged: (String) -> Void
     let onFocusChanged: (Bool) -> Void
     let onReturnPressed: () -> Void
     let onDeletePressed: () -> Void
-    let onBlockTypeChanged: (BlockType) -> Void
+    let onDoubleNewline: () -> Void
+    let onBackspaceAtStart: () -> Void
     
     @State private var content: String = ""
+    @State private var lastContent: String = ""
     @FocusState private var isTextFieldFocused: Bool
-    @State private var isHovering = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Block type indicator
-            HStack {
-                Button(action: {
-                    let newType: BlockType = block.blockType == .heading ? .paragraph : .heading
-                    onBlockTypeChanged(newType)
-                }) {
-                    Text(block.blockType.displayName)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.gray.opacity(isHovering ? 0.3 : 0.2))
-                        .cornerRadius(4)
-                        .animation(.easeInOut(duration: 0.2), value: isHovering)
-                }
-                .accessibilityLabel("Block type: \(block.blockType.displayName)")
-                .accessibilityHint("Double tap to switch block type")
-                .onHover { hovering in
-                    isHovering = hovering
-                }
-                
-                Spacer()
-                
-                // Delete button for non-heading blocks when there's content
-                if block.blockType != .heading && !block.isEmpty {
-                    Button(action: onDeletePressed) {
-                        Image(systemName: "trash")
-                            .font(.caption)
-                            .foregroundColor(.red)
+        Group {
+            if block.blockType == .heading {
+                TextField("", text: $content, axis: .vertical)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .focused($isTextFieldFocused)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .padding(.vertical, 8)
+                    .accessibilityLabel("Heading")
+                    .accessibilityHint("Enter heading text")
+                    .onSubmit {
+                        onReturnPressed()
                     }
-                    .accessibilityLabel("Delete block")
-                    .accessibilityHint("Delete this block")
-                }
+            } else {
+                TextField("", text: $content, axis: .vertical)
+                    .font(.body)
+                    .focused($isTextFieldFocused)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .padding(.vertical, 4)
+                    .lineLimit(nil)
+                    .accessibilityLabel("Paragraph")
+                    .accessibilityHint("Enter paragraph text")
+                    .onSubmit {
+                        onReturnPressed()
+                    }
             }
-            
-            // Text editor based on block type
-            Group {
-                if block.blockType == .heading {
-                    TextField("Enter heading...", text: $content, axis: .vertical)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .focused($isTextFieldFocused)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .padding()
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
-                        .accessibilityLabel("Heading block")
-                        .accessibilityHint("Enter heading text")
-                } else {
-                    TextField("Enter paragraph...", text: $content, axis: .vertical)
-                        .font(.body)
-                        .focused($isTextFieldFocused)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .padding()
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
-                        .lineLimit(nil)
-                        .accessibilityLabel("Paragraph block")
-                        .accessibilityHint("Enter paragraph text")
-                }
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isFocused ? Color.blue : Color.clear, lineWidth: 2)
-                    .animation(.easeInOut(duration: 0.2), value: isFocused)
-            )
         }
-        .animation(.easeInOut(duration: 0.2), value: block.blockType)
         .onAppear {
             content = block.content
+            lastContent = block.content
             if isFocused {
                 isTextFieldFocused = true
             }
         }
-        .onChange(of: content) { newContent in
-            onContentChanged(newContent)
+        .onChange(of: content) { _, newContent in
+            handleContentChange(newContent)
         }
-        .onChange(of: isTextFieldFocused) { focused in
+        .onChange(of: isTextFieldFocused) { _, focused in
             onFocusChanged(focused)
         }
-        .onChange(of: isFocused) { focused in
+        .onChange(of: isFocused) { _, focused in
             isTextFieldFocused = focused
         }
-        .onSubmit {
-            onReturnPressed()
+    }
+    
+    private func handleContentChange(_ newContent: String) {
+        // Handle delete key for empty paragraph blocks
+        if newContent.isEmpty && !lastContent.isEmpty && lastContent.count == 1 && block.blockType == .paragraph && !isFirstBlock {
+            onDeletePressed()
+            return
         }
+        
+        // Check for double newline to create new block
+        if newContent.hasSuffix("\n\n") && !lastContent.hasSuffix("\n\n") {
+            let trimmedContent = String(newContent.dropLast(2))
+            onContentChanged(trimmedContent)
+            onDoubleNewline()
+            return
+        }
+        
+        // Check for backspace at start to merge blocks
+        if newContent.isEmpty && !lastContent.isEmpty && lastContent.count == 1 {
+            onBackspaceAtStart()
+            return
+        }
+        
+        lastContent = newContent
+        onContentChanged(newContent)
     }
 }
 

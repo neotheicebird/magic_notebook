@@ -8,7 +8,7 @@ struct DocumentStatisticsView: View {
         NavigationView {
             List {
                 // Overall Statistics
-                Section("Overall Statistics") {
+                Section("Overview") {
                     StatisticRow(
                         title: "Total Documents",
                         value: "\(documentStore.totalDocuments)",
@@ -55,87 +55,31 @@ struct DocumentStatisticsView: View {
                     )
                 }
                 
-                // Block Statistics
-                Section("Block Statistics") {
-                    StatisticRow(
-                        title: "Total Blocks",
-                        value: "\(totalBlocks)",
-                        icon: "square.stack.3d.up"
-                    )
-                    
-                    StatisticRow(
-                        title: "Heading Blocks",
-                        value: "\(headingBlocks)",
-                        icon: "textformat.size"
-                    )
-                    
-                    StatisticRow(
-                        title: "Paragraph Blocks",
-                        value: "\(paragraphBlocks)",
-                        icon: "text.alignleft"
-                    )
-                    
-                    StatisticRow(
-                        title: "Average Blocks per Document",
-                        value: String(format: "%.1f", averageBlocksPerDocument),
-                        icon: "chart.line.uptrend.xyaxis"
-                    )
-                }
-                
-                // Most Active Tags
-                Section("Most Active Tags") {
-                    ForEach(Array(topTags.enumerated()), id: \.offset) { index, tagData in
-                        HStack {
-                            Text("#\(index + 1)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .frame(width: 30, alignment: .leading)
-                            
-                            Text("#\(tagData.tag)")
-                                .font(.body)
-                                .foregroundColor(.blue)
-                            
-                            Spacer()
-                            
-                            Text("\(tagData.count)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                // Top Tags
+                if !topTags.isEmpty {
+                    Section("Popular Tags") {
+                        ForEach(topTags, id: \.tag) { tagInfo in
+                            HStack {
+                                Image(systemName: "tag")
+                                    .foregroundColor(.blue)
+                                    .frame(width: 24)
+                                
+                                Text("#\(tagInfo.tag)")
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                Text("\(tagInfo.count)")
+                                    .font(.headline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 2)
                         }
                     }
-                }
-                
-                // Backup & Recovery
-                Section("Backup & Recovery") {
-                    Button(action: {
-                        exportAllDocuments()
-                    }) {
-                        HStack {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundColor(.blue)
-                            Text("Export All Documents")
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    
-                    Button(action: {
-                        cleanupBackupFiles()
-                    }) {
-                        HStack {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                            Text("Clean Backup Files")
-                                .foregroundColor(.red)
-                        }
-                    }
-                    
-                    StatisticRow(
-                        title: "Backup Files",
-                        value: "\(backupFileCount)",
-                        icon: "doc.badge.gearshape"
-                    )
                 }
             }
-            .navigationTitle("Document Statistics")
+            .navigationTitle("Analytics")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -166,27 +110,6 @@ struct DocumentStatisticsView: View {
         return documentStore.documents.filter { $0.totalWordCount > 500 }
     }
     
-    private var totalBlocks: Int {
-        return documentStore.documents.reduce(0) { $0 + $1.blocks.count }
-    }
-    
-    private var headingBlocks: Int {
-        return documentStore.documents.reduce(0) { total, document in
-            total + document.blocks.filter { $0.blockType == .heading }.count
-        }
-    }
-    
-    private var paragraphBlocks: Int {
-        return documentStore.documents.reduce(0) { total, document in
-            total + document.blocks.filter { $0.blockType == .paragraph }.count
-        }
-    }
-    
-    private var averageBlocksPerDocument: Double {
-        guard documentStore.totalDocuments > 0 else { return 0.0 }
-        return Double(totalBlocks) / Double(documentStore.totalDocuments)
-    }
-    
     private var topTags: [(tag: String, count: Int)] {
         var tagCounts: [String: Int] = [:]
         
@@ -197,72 +120,8 @@ struct DocumentStatisticsView: View {
         }
         
         return tagCounts.sorted { $0.value > $1.value }
-            .prefix(10)
+            .prefix(5)
             .map { (tag: $0.key, count: $0.value) }
-    }
-    
-    private var backupFileCount: Int {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("MagicNotes", isDirectory: true)
-        
-        do {
-            let files = try FileManager.default.contentsOfDirectory(atPath: documentsDirectory.path)
-            return files.filter { $0.hasSuffix(".backup") }.count
-        } catch {
-            return 0
-        }
-    }
-    
-    // MARK: - Actions
-    
-    private func exportAllDocuments() {
-        let exportData = documentStore.documents.map { document in
-            """
-            # \(document.generatedTitle)
-            Created: \(document.createdAt)
-            Last Edited: \(document.lastEditedAt)
-            Word Count: \(document.totalWordCount)
-            Tags: \(document.tags.joined(separator: ", "))
-            
-            \(document.blocks.map { block in
-                switch block.blockType {
-                case .heading:
-                    return "# \(block.content)"
-                case .paragraph:
-                    return block.content
-                }
-            }.joined(separator: "\n\n"))
-            
-            ---
-            
-            """
-        }.joined(separator: "\n")
-        
-        let activityVC = UIActivityViewController(activityItems: [exportData], applicationActivities: nil)
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.present(activityVC, animated: true)
-        }
-    }
-    
-    private func cleanupBackupFiles() {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("MagicNotes", isDirectory: true)
-        
-        do {
-            let files = try FileManager.default.contentsOfDirectory(atPath: documentsDirectory.path)
-            let backupFiles = files.filter { $0.hasSuffix(".backup") }
-            
-            for backupFile in backupFiles {
-                let backupURL = documentsDirectory.appendingPathComponent(backupFile)
-                try FileManager.default.removeItem(at: backupURL)
-            }
-            
-            print("Cleaned up \(backupFiles.count) backup files")
-        } catch {
-            print("Failed to clean backup files: \(error.localizedDescription)")
-        }
     }
 }
 

@@ -39,12 +39,12 @@ struct ContentView: View {
                     Button(action: {
                         showingStatistics = true
                     }) {
-                        Image(systemName: "chart.bar")
+                        Image(systemName: "sparkles")
                             .font(.title2)
-                            .foregroundColor(.blue)
+                            .foregroundColor(.purple)
                     }
-                    .accessibilityLabel("View statistics")
-                    .accessibilityHint("View document statistics and analytics")
+                    .accessibilityLabel("View analytics")
+                    .accessibilityHint("View document analytics and insights")
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -53,7 +53,7 @@ struct ContentView: View {
                     }) {
                         Image(systemName: "plus")
                             .font(.title2)
-                            .foregroundColor(Color(red: 0.8, green: 1.0, blue: 0.2)) // Lemon green
+                            .foregroundColor(.purple)
                     }
                     .accessibilityLabel("Create new document")
                     .accessibilityHint("Choose a template for a new document")
