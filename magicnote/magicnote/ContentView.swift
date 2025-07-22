@@ -7,56 +7,107 @@ struct ContentView: View {
     @State private var searchText = ""
     @State private var showingTemplateSelector = false
     @State private var showingStatistics = false
+    @State private var isToolbarVisible = true
+    @State private var lastScrollOffset: CGFloat = 0
+    @State private var scrollTimer: Timer?
     
     var body: some View {
         NavigationView {
-            VStack {
-                // Main content
-                if filteredDocuments.isEmpty {
-                    if documentStore.documents.isEmpty {
-                        EmptyStateView()
-                    } else {
-                        SearchEmptyStateView()
+            ZStack {
+                VStack(spacing: 0) {
+                    // Custom header with left-aligned icon and title
+                    HStack {
+                        Image("24-code-editor")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 32, height: 32)
+                            .foregroundColor(.primary)
+                        
+                        Text("Entries")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                        
+                        Spacer()
                     }
-                } else {
-                    List {
-                        ForEach(filteredDocuments) { document in
-                            DocumentRowView(document: document, documentStore: documentStore) {
-                                selectedDocument = document
-                                showingDocumentEditor = true
-                            }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    
+                    // Search bar
+                    if filteredDocuments.isEmpty {
+                        if documentStore.documents.isEmpty {
+                            EmptyStateView()
+                        } else {
+                            SearchEmptyStateView()
                         }
-                        .onDelete(perform: deleteDocuments)
+                    } else {
+                        ScrollView {
+                            LazyVStack {
+                                ForEach(filteredDocuments) { document in
+                                    DocumentRowView(document: document, documentStore: documentStore) {
+                                        selectedDocument = document
+                                        showingDocumentEditor = true
+                                    }
+                                    .padding(.horizontal)
+                                }
+                            }
+                            .background(
+                                GeometryReader { geometry in
+                                    Color.clear
+                                        .onAppear {
+                                            lastScrollOffset = geometry.frame(in: .global).minY
+                                        }
+                                        .onChange(of: geometry.frame(in: .global).minY) { oldValue, newValue in
+                                            let currentOffset = newValue
+                                            let threshold: CGFloat = 5
+                                            
+                                            // If scroll position changed significantly, hide toolbar
+                                            if abs(currentOffset - lastScrollOffset) > threshold {
+                                                withAnimation(.easeInOut(duration: 0.3)) {
+                                                    isToolbarVisible = false
+                                                }
+                                                
+                                                // Cancel existing timer
+                                                scrollTimer?.invalidate()
+                                                
+                                                // Start new timer to show toolbar when scrolling stops
+                                                scrollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+                                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                                        isToolbarVisible = true
+                                                    }
+                                                }
+                                            }
+                                            lastScrollOffset = currentOffset
+                                        }
+                                }
+                            )
+                        }
                     }
-                    .listStyle(PlainListStyle())
+                    
+                    // Add padding to prevent content from being hidden behind bottom toolbar
+                    Spacer()
+                        .frame(height: isToolbarVisible ? 70 : 20)
                 }
-            }
-            .navigationTitle("Notes")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $searchText, prompt: "Search documents...")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        showingStatistics = true
-                    }) {
-                        Image(systemName: "sparkles")
-                            .font(.title2)
-                            .foregroundColor(.purple)
-                    }
-                    .accessibilityLabel("View analytics")
-                    .accessibilityHint("View document analytics and insights")
-                }
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search documents...")
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingTemplateSelector = true
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.title2)
-                            .foregroundColor(.purple)
-                    }
-                    .accessibilityLabel("Create new document")
-                    .accessibilityHint("Choose a template for a new document")
+                // Bottom Toolbar - animate in/out based on scroll
+                VStack {
+                    Spacer()
+                    BottomToolbarView(
+                        onFolderTapped: {
+                            // Placeholder - do nothing for now
+                        },
+                        onStarTapped: {
+                            showingStatistics = true
+                        },
+                        onSwapTapped: {
+                            // Placeholder - do nothing for now
+                        },
+                        onPenTapped: {
+                            showingTemplateSelector = true
+                        }
+                    )
+                    .offset(y: isToolbarVisible ? 0 : 100)
+                    .animation(.easeInOut(duration: 0.3), value: isToolbarVisible)
                 }
             }
         }
@@ -75,6 +126,9 @@ struct ContentView: View {
         }
         .onAppear {
             setupKeyboardShortcuts()
+        }
+        .onDisappear {
+            scrollTimer?.invalidate()
         }
     }
     
@@ -101,6 +155,7 @@ struct ContentView: View {
         // Keyboard shortcuts will be handled by the system
         // This is a placeholder for future keyboard shortcut implementation
     }
+
 }
 
 // MARK: - Empty State View
@@ -116,7 +171,7 @@ struct EmptyStateView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.primary)
             
-            Text("Tap the + icon above to create your first document")
+            Text("Tap the pen icon in the bottom toolbar to create your first document")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -472,6 +527,69 @@ struct TemplateButton: View {
             }
             .padding(.vertical, 4)
         }
+    }
+}
+
+// MARK: - Bottom Toolbar View
+struct BottomToolbarView: View {
+    let onFolderTapped: () -> Void
+    let onStarTapped: () -> Void
+    let onSwapTapped: () -> Void
+    let onPenTapped: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Folder button
+            ToolbarButton(iconName: "24-folder") {
+                onFolderTapped()
+            }
+            .disabled(true) // Disabled for now as specified
+            
+            Spacer()
+            
+            // Star-sparkle button (Statistics)
+            ToolbarButton(iconName: "24-star-sparkle") {
+                onStarTapped()
+            }
+            
+            Spacer()
+            
+            // Swap button
+            ToolbarButton(iconName: "24-swap") {
+                onSwapTapped()
+            }
+            .disabled(true) // Disabled for now as specified
+            
+            Spacer()
+            
+            // Pen button (Create document)
+            ToolbarButton(iconName: "24-pen") {
+                onPenTapped()
+            }
+        }
+        .padding(.horizontal, 40) // Equal spacing from edges
+        .padding(.vertical, 8)
+        .frame(height: 49) // Standard iOS toolbar height
+        .background(.ultraThinMaterial) // Liquid glass effect
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 0) }
+    }
+}
+
+// MARK: - Toolbar Button
+struct ToolbarButton: View {
+    let iconName: String
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+    
+    var body: some View {
+        Button(action: action) {
+            Image(iconName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 24, height: 24)
+                .foregroundColor(isEnabled ? .primary : .secondary.opacity(0.5))
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

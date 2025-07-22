@@ -153,6 +153,12 @@ struct DocumentEditorView: View {
     // Performance optimization - debounced auto-save
     private let autoSaveInterval: TimeInterval = 2.0
     
+    // UI state for entry toolbar
+    @State private var isExpandedToolbarVisible = false
+    @State private var isBottomToolbarVisible = true
+    @State private var lastScrollOffset: CGFloat = 0
+    @State private var scrollTimer: Timer?
+    
     // UI state for floating toolbar
     @State private var showingFloatingToolbar = false
     
@@ -207,83 +213,96 @@ struct DocumentEditorView: View {
                             }
                         }
                         .padding(.horizontal)
-                        .padding(.bottom, 100) // Space for floating toolbar
+                        .padding(.bottom, isExpandedToolbarVisible ? 150 : 100) // Space for toolbar(s)
+                        .background(
+                            GeometryReader { geometry in
+                                Color.clear
+                                    .onAppear {
+                                        lastScrollOffset = geometry.frame(in: .global).minY
+                                    }
+                                    .onChange(of: geometry.frame(in: .global).minY) { oldValue, newValue in
+                                        let currentOffset = newValue
+                                        let threshold: CGFloat = 5
+                                        
+                                        // If scroll position changed significantly, hide toolbar
+                                        if abs(currentOffset - lastScrollOffset) > threshold {
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                isBottomToolbarVisible = false
+                                                if isExpandedToolbarVisible {
+                                                    isExpandedToolbarVisible = false
+                                                }
+                                            }
+                                            
+                                            // Cancel existing timer
+                                            scrollTimer?.invalidate()
+                                            
+                                            // Start new timer to show toolbar when scrolling stops
+                                            scrollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+                                                withAnimation(.easeInOut(duration: 0.3)) {
+                                                    isBottomToolbarVisible = true
+                                                }
+                                            }
+                                        }
+                                        lastScrollOffset = currentOffset
+                                    }
+                            }
+                        )
                     }
                 }
                 
-                // Floating + Button
+                // Bottom Toolbars
                 VStack {
                     Spacer()
-                    HStack {
-                        Spacer()
-                        Button(action: {
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingFloatingToolbar.toggle()
-                            }
-                        }) {
-                            Image(systemName: showingFloatingToolbar ? "xmark" : "plus")
-                                .font(.title)
-                                .fontWeight(.bold)
-                                .foregroundColor(.purple)
-                        }
-                        .rotationEffect(.degrees(showingFloatingToolbar ? 45 : 0))
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showingFloatingToolbar)
-                    }
-                    .padding(.trailing, 20)
-                    .padding(.bottom, showingFloatingToolbar ? 80 : 20)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showingFloatingToolbar)
-                }
-                
-                // Floating Toolbar
-                if showingFloatingToolbar {
-                    VStack {
-                        Spacer()
-                        HStack(spacing: 20) {
-                            Button(action: {
+                    
+                    // Expanded toolbar (appears above main toolbar)
+                    if isExpandedToolbarVisible {
+                        ExpandedEntryToolbarView(
+                            onGearTapped: { /* Future functionality */ },
+                            onBellTapped: { /* Future functionality */ },
+                            onBoltTapped: { /* Future functionality */ },
+                            onDialTapped: { /* Future functionality */ },
+                            onFeatherTapped: { /* Future functionality */ },
+                            onMagicWandTapped: { /* Future functionality */ },
+                            onNutTapped: { /* Future functionality */ },
+                            onThumbsUpTapped: { /* Future functionality */ },
+                            onUserTapped: { /* Future functionality */ },
+                            onLinkTapped: { /* Future functionality */ },
+                            onHouseTapped: { /* Future functionality */ },
+                            onFoldersTapped: { /* Future functionality */ },
+                            onUndo: {
                                 _ = undoManager.undo(on: &document)
                                 markAsChanged()
-                            }) {
-                                Image(systemName: "arrow.uturn.backward")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.purple)
-                                    .clipShape(Circle())
-                            }
-                            .disabled(!undoManager.canUndo)
-                            .accessibilityLabel("Undo")
-                            
-                            Button(action: {
+                            },
+                            onRedo: {
                                 _ = undoManager.redo(on: &document)
                                 markAsChanged()
-                            }) {
-                                Image(systemName: "arrow.uturn.forward")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.purple)
-                                    .clipShape(Circle())
-                            }
-                            .disabled(!undoManager.canRedo)
-                            .accessibilityLabel("Redo")
-                            
-                            Button(action: {
+                            },
+                            onShare: {
                                 showingShareSheet = true
-                            }) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.purple)
-                                    .clipShape(Circle())
-                            }
-                            .disabled(document.isEmpty)
-                            .accessibilityLabel("Share document")
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                            },
+                            canUndo: undoManager.canUndo,
+                            canRedo: undoManager.canRedo,
+                            documentIsEmpty: document.isEmpty
+                        )
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
+                    
+                    // Main entry toolbar (slider and pen)
+                    EntryBottomToolbarView(
+                        isExpanded: isExpandedToolbarVisible,
+                        onSliderTapped: {
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                isExpandedToolbarVisible.toggle()
+                            }
+                        },
+                        onPenTapped: {
+                            // Close editor
+                            saveDocument()
+                            dismiss()
+                        }
+                    )
+                    .offset(y: isBottomToolbarVisible ? 0 : 100)
+                    .animation(.easeInOut(duration: 0.3), value: isBottomToolbarVisible)
                 }
             }
             .navigationTitle("")
@@ -323,6 +342,7 @@ struct DocumentEditorView: View {
         }
         .onDisappear {
             autoSaveTimer?.invalidate()
+            scrollTimer?.invalidate()
             if hasUnsavedChanges {
                 saveDocument()
             }
@@ -498,6 +518,8 @@ struct DocumentEditorView: View {
         document.updateLastEditedTime()
         markAsChanged()
     }
+    
+
     
     // MARK: - Focus Management
     
@@ -814,6 +836,158 @@ struct ShareSheet: View {
            let window = windowScene.windows.first {
             window.rootViewController?.present(activityVC, animated: true)
         }
+    }
+}
+
+// MARK: - Entry Bottom Toolbar View
+struct EntryBottomToolbarView: View {
+    let isExpanded: Bool
+    let onSliderTapped: () -> Void
+    let onPenTapped: () -> Void
+    
+    var body: some View {
+        HStack {
+            // Slider button (left)
+            Button(action: onSliderTapped) {
+                Image(isExpanded ? "24-slider-1" : "24-slider")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(isExpanded ? .primary : .primary)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Spacer()
+            
+            // Pen button (right)
+            Button(action: onPenTapped) {
+                Image("24-pen")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(.primary)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(.horizontal, 40)
+        .padding(.vertical, 8)
+        .frame(height: 49)
+        .background(.ultraThinMaterial)
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 0) }
+    }
+}
+
+// MARK: - Expanded Entry Toolbar View
+struct ExpandedEntryToolbarView: View {
+    let onGearTapped: () -> Void
+    let onBellTapped: () -> Void
+    let onBoltTapped: () -> Void
+    let onDialTapped: () -> Void
+    let onFeatherTapped: () -> Void
+    let onMagicWandTapped: () -> Void
+    let onNutTapped: () -> Void
+    let onThumbsUpTapped: () -> Void
+    let onUserTapped: () -> Void
+    let onLinkTapped: () -> Void
+    let onHouseTapped: () -> Void
+    let onFoldersTapped: () -> Void
+    let onUndo: () -> Void
+    let onRedo: () -> Void
+    let onShare: () -> Void
+    let canUndo: Bool
+    let canRedo: Bool
+    let documentIsEmpty: Bool
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main utility icons
+            HStack(spacing: 0) {
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-gear", action: onGearTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-bell", action: onBellTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-bolt", action: onBoltTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-dial", action: onDialTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-feather", action: onFeatherTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-magic-wand-sparkle", action: onMagicWandTapped)
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            
+            // Secondary icons
+            HStack(spacing: 0) {
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-nut", action: onNutTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-thumbs-up", action: onThumbsUpTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-user", action: onUserTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-link", action: onLinkTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-house", action: onHouseTapped)
+                Spacer()
+                ExpandedToolbarButton(iconName: "24-folders", action: onFoldersTapped)
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            
+            // Action icons (Undo, Redo, Share)
+            HStack(spacing: 0) {
+                Spacer()
+                Button(action: onUndo) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.title3)
+                        .foregroundColor(canUndo ? .primary : .secondary.opacity(0.5))
+                }
+                .disabled(!canUndo)
+                
+                Spacer()
+                
+                Button(action: onRedo) {
+                    Image(systemName: "arrow.uturn.forward")
+                        .font(.title3)
+                        .foregroundColor(canRedo ? .primary : .secondary.opacity(0.5))
+                }
+                .disabled(!canRedo)
+                
+                Spacer()
+                
+                Button(action: onShare) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.title3)
+                        .foregroundColor(documentIsEmpty ? .secondary.opacity(0.5) : .primary)
+                }
+                .disabled(documentIsEmpty)
+                
+                Spacer()
+            }
+            .padding(.vertical, 12)
+        }
+        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial)
+        .frame(height: 98) // Two times the height of main toolbar
+    }
+}
+
+// MARK: - Expanded Toolbar Button
+struct ExpandedToolbarButton: View {
+    let iconName: String
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Image(iconName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 20, height: 20)
+                .foregroundColor(.primary)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
